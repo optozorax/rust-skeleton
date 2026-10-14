@@ -46,7 +46,8 @@ Use an omission marker's source range to open the relevant implementation in the
 
 - Processes one UTF-8 Rust source file at a time.
 - Removes free-function, method, and default trait method bodies.
-- Leaves empty bodies, function declarations, constants, statics, and macros unchanged.
+- Cuts string literals longer than 3 lines outside the removed bodies (a shader source or a text in a constant) to their first non-empty line: `r#"float sharp(float t, float count) {"# /* string literal omitted: source lines 20-93 */`.
+- Leaves empty bodies, function declarations, constants, statics, and macros otherwise unchanged.
 - Rejects files with syntax errors instead of producing a partial skeleton.
 - Produces valid Rust syntax, but the result is not expected to compile.
 
@@ -59,7 +60,7 @@ Add this to your AGENTS.md for your LLM agents to use it:
 ````md
 # Rust skeleton
 
-Use `rust-skeleton <file.rs>` to inspect a Rust file without function implementations. It preserves imports, comments, attributes, types, fields, signatures, and macros, while replacing function and method bodies with source-line markers.
+Use `rust-skeleton <file.rs>` to inspect a Rust file without function implementations. It preserves imports, comments, attributes, types, fields, signatures, and macros, while replacing function and method bodies with source-line markers. String literals longer than 3 lines keep only their first line and a source-line marker.
 
 The skeleton is written to stdout; before/after line and symbol counts are written to stderr.
 

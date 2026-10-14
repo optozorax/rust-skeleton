@@ -1,7 +1,10 @@
 use std::{fs, io::Write, path::PathBuf, process::ExitCode};
 
 use clap::Parser;
-use ra_ap_syntax::{AstNode, Edition, SourceFile, ast};
+use ra_ap_syntax::{
+    AstNode, Edition, SourceFile,
+    ast::{self, AstToken, IsString},
+};
 
 #[derive(Parser)]
 struct Args {
@@ -77,6 +80,61 @@ fn main() -> ExitCode {
             ),
         ));
     }
+
+    // A long string literal outside function bodies (a GLSL source in a
+    // constant, a documentation text) keeps only its first non-empty line.
+    let mut strings = Vec::new();
+    for string in parsed
+        .tree()
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter_map(ast::AnyString::cast)
+    {
+        let range = string.syntax().text_range();
+        let (start, end) = (usize::from(range.start()), usize::from(range.end()));
+        let line_count = string.text().lines().count();
+        if line_count <= 3
+            || replacements
+                .iter()
+                .any(|(body, _)| body.start <= start && end <= body.end)
+        {
+            continue;
+        }
+        let Some(quotes) = string.quote_offsets() else {
+            continue;
+        };
+        let raw = string.is_raw();
+        let first_line = string
+            .text_without_quotes()
+            .lines()
+            .map(|line| {
+                if raw {
+                    line.trim()
+                } else {
+                    // A line continuation `\` would escape the closing quote.
+                    line.trim().trim_end_matches('\\').trim_end()
+                }
+            })
+            .find(|line| !line.is_empty())
+            .unwrap_or("");
+        let first_source_line = source[..start]
+            .bytes()
+            .filter(|&byte| byte == b'\n')
+            .count()
+            + 1;
+        let last_source_line = first_source_line + line_count - 1;
+        strings.push((
+            start..end,
+            format!(
+                "{}{first_line}{} /* string literal omitted: source lines {first_source_line}-{last_source_line} */",
+                &source[quotes.quotes.0],
+                &source[quotes.quotes.1],
+            ),
+        ));
+    }
+    replacements.extend(strings);
+    replacements.sort_by_key(|(range, _)| range.start);
 
     for (range, replacement) in replacements.into_iter().rev() {
         source.replace_range(range, &replacement);
